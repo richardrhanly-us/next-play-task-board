@@ -1,3 +1,7 @@
+/* =========================================================
+   GLOBAL RESET AND BASE THEME
+   ========================================================= */
+
 * {
   box-sizing: border-box;
 }
@@ -31,11 +35,21 @@ select {
   min-height: 100vh;
 }
 
+
+/* =========================================================
+   MAIN APPLICATION LAYOUT
+   ========================================================= */
+
 .app-shell {
   width: 100%;
   min-height: 100vh;
   padding: 48px;
 }
+
+
+/* =========================================================
+   PAGE HEADER
+   ========================================================= */
 
 .app-header {
   display: flex;
@@ -69,6 +83,11 @@ select {
   font-size: 1rem;
 }
 
+
+/* =========================================================
+   PRIMARY ACTION BUTTON
+   ========================================================= */
+
 .primary-button {
   flex-shrink: 0;
   border: 0;
@@ -90,6 +109,17 @@ select {
   box-shadow: 0 10px 24px rgba(109, 93, 252, 0.32);
   transform: translateY(-1px);
 }
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
+}
+
+
+/* =========================================================
+   KANBAN BOARD GRID
+   ========================================================= */
 
 .board {
   display: grid;
@@ -136,6 +166,11 @@ select {
   font-weight: 700;
 }
 
+
+/* =========================================================
+   EMPTY COLUMN STATE
+   ========================================================= */
+
 .empty-state {
   display: grid;
   min-height: 140px;
@@ -158,6 +193,11 @@ select {
   font-size: 0.84rem;
 }
 
+
+/* =========================================================
+   RESPONSIVE BOARD LAYOUT
+   ========================================================= */
+
 @media (max-width: 900px) {
   .app-shell {
     padding: 28px 20px;
@@ -172,6 +212,11 @@ select {
     grid-template-columns: repeat(4, minmax(280px, 1fr));
   }
 }
+
+
+/* =========================================================
+   MODAL BACKDROP AND PANEL
+   ========================================================= */
 
 .modal-backdrop {
   position: fixed;
@@ -232,6 +277,11 @@ select {
   color: #667085;
   line-height: 1.5;
 }
+
+
+/* =========================================================
+   TASK FORM
+   ========================================================= */
 
 .task-form {
   display: flex;
@@ -311,6 +361,11 @@ select {
   background: #f9fafb;
 }
 
+
+/* =========================================================
+   MOBILE FORM AND MODAL BUTTON LAYOUT
+   ========================================================= */
+
 @media (max-width: 560px) {
   .form-row {
     grid-template-columns: 1fr;
@@ -323,4 +378,242 @@ select {
   .modal-actions button {
     width: 100%;
   }
+}
+
+
+/* =========================================================
+   FULL-SCREEN LOADING AND ERROR STATES
+   ========================================================= */
+
+.status-screen {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  padding: 24px;
+  color: #667085;
+  text-align: center;
+}
+
+.status-screen.error h1 {
+  margin: 0 0 10px;
+  color: #b42318;
+  font-size: 1.4rem;
+}
+
+.status-screen.error p {
+  margin: 0;
+}
+
+
+/* =========================================================
+   TASK CARD MENU AND POPOVER
+   ========================================================= */
+
+.task-card {
+  position: relative;
+}
+
+.task-menu-wrapper {
+  position: relative;
+}
+
+.task-menu-popover {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  width: 145px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.task-menu-popover button {
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 10px;
+  color: #344054;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.task-menu-popover button:hover {
+  background: #f2f4f7;
+}
+
+.task-menu-popover .delete-menu-button {
+  color: #b42318;
+}
+
+.task-menu-popover .delete-menu-button:hover {
+  background: #fef3f2;
+}
+
+
+/* =========================================================
+   SEARCH AND FILTER TOOLBAR
+   ========================================================= */
+
+.board-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  max-width: 1500px;
+  margin: 0 auto 24px;
+  padding: 14px;
+  border: 1px solid #e4e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgba(23, 32, 51, 0.05);
+}
+
+.search-field {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+}
+
+.search-field input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  padding: 10px 12px 10px 40px;
+  color: #172033;
+  background: #ffffff;
+  outline: none;
+}
+
+.search-field input:focus,
+.filter-field select:focus {
+  border-color: #7a6df6;
+  box-shadow: 0 0 0 4px rgba(109, 93, 252, 0.12);
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  width: 18px;
+  height: 18px;
+  color: #98a2b3;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.filter-field {
+  display: flex;
+  min-width: 170px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-field > span {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.filter-field select {
+  min-height: 42px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  padding: 9px 34px 9px 11px;
+  color: #344054;
+  background: #ffffff;
+  outline: none;
+}
+
+.clear-filters-button {
+  min-height: 42px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #5c4ee5;
+  background: #ffffff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.clear-filters-button:hover {
+  background: #f5f3ff;
+}
+
+.filter-results {
+  margin: 0 0 11px auto;
+  color: #7c8698;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+
+/* =========================================================
+   SCREEN-READER-ONLY ACCESSIBILITY UTILITY
+   ========================================================= */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+
+/* =========================================================
+   RESPONSIVE FILTER TOOLBAR
+   ========================================================= */
+
+@media (max-width: 760px) {
+  .board-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-field,
+  .filter-field {
+    width: 100%;
+  }
+
+  .filter-results {
+    margin: 0;
+  }
+}
+
+
+/* =========================================================
+   APPLICATION FOOTER
+   ========================================================= */
+
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 1500px;
+  margin: 28px auto 0;
+  padding: 20px;
+  color: #7c8698;
+  font-size: 0.82rem;
+}
+
+.app-footer a {
+  color: #6d5dfc;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  text-decoration: underline;
 }
