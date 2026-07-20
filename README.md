@@ -15,7 +15,7 @@ Each visitor is automatically signed in as an anonymous guest. Supabase Row Leve
 
 Add your deployed application URL here:
 
-https://your-live-app-url.com
+[https://your-live-app-url.com](https://next-play-task-board-black.vercel.app/)
 
 ## GitHub Repository
 
