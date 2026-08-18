@@ -1,3 +1,32 @@
+/**
+ * FlowBoard
+ * ---------
+ * Created by: Richard Hanly
+ *
+ * Kanban-style task management application built with React, TypeScript,
+ * Supabase, and dnd-kit.
+ *
+ * React is responsible for the interactive UI and client-side state.
+ * Supabase provides anonymous authentication, PostgreSQL persistence,
+ * and Row Level Security (RLS).
+ * dnd-kit provides the drag-and-drop interaction layer for moving tasks
+ * between workflow columns.
+ *
+ * Data flow at a high level:
+ *   Supabase -> React state -> rendered UI -> user action
+ *            -> React handler -> Supabase -> updated React state
+ *
+ * Important implementation ideas demonstrated in this file:
+ * - Typed task, label, and activity models with TypeScript
+ * - Anonymous Supabase authentication and user-scoped data
+ * - Persistent CRUD operations
+ * - Optimistic drag-and-drop updates with rollback on failure
+ * - Many-to-many task/label relationships through task_labels
+ * - Activity history stored separately from current task state
+ * - Combined search, priority, and label filtering
+ * - Derived board statistics and due-date indicators
+ */
+
 import {
   useEffect,
   useState,
@@ -13,11 +42,15 @@ import {
 import { supabase } from './lib/supabase'
 import './App.css'
 
+// Restrict workflow status to the four valid Kanban columns.
+// TypeScript can now catch invalid status values during development.
 type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
 type TaskPriority = 'low' | 'normal' | 'high'
 type DueDateStatus = 'overdue' | 'today' | 'soon' | 'normal' | null
 type TaskActivityAction = 'created' | 'status_changed' | 'edited'
 
+// These interfaces describe the shape of data FlowBoard receives from
+// Supabase. They make the database records predictable throughout the UI.
 interface Label {
   id: string
   user_id: string
@@ -26,6 +59,8 @@ interface Label {
   created_at: string
 }
 
+// Join-table record connecting one task to one label.
+// Multiple rows allow the overall task/label relationship to be many-to-many.
 interface TaskLabel {
   task_id: string
   label_id: string
@@ -44,6 +79,8 @@ interface Task {
   created_at: string
 }
 
+// Activity records represent events over time, while Task represents
+// the task's current state.
 interface TaskActivity {
   id: string
   task_id: string
@@ -54,6 +91,8 @@ interface TaskActivity {
   created_at: string
 }
 
+// UI definition for the four Kanban workflow columns.
+// The id is also the value persisted in tasks.status.
 const columns: { id: TaskStatus; title: string }[] = [
   { id: 'todo', title: 'To Do' },
   { id: 'in_progress', title: 'In Progress' },
@@ -93,6 +132,8 @@ function formatColorName(color: string) {
   return color.charAt(0).toUpperCase() + color.slice(1)
 }
 
+// Derive a display state from the due date without modifying the task.
+// Completed tasks intentionally do not receive overdue warnings.
 function getDueDateStatus(
   dueDate: string | null,
   taskStatus: TaskStatus,
@@ -134,6 +175,11 @@ interface DraggableTaskProps {
   onOpen: () => void
 }
 
+/**
+ * Renders one task card and connects it to dnd-kit's draggable behavior.
+ * The card receives task data through props; it does not own the task itself.
+ * Changes are handled by callbacks passed down from App.
+ */
 function DraggableTask({
   task,
   labels,
@@ -252,6 +298,11 @@ interface DroppableColumnProps {
   children: ReactNode
 }
 
+/**
+ * Wraps a Kanban column in dnd-kit's droppable behavior.
+ * When a draggable task is released over this element, dnd-kit reports
+ * this column's id back to handleDragEnd.
+ */
 function DroppableColumn({
   columnId,
   children,
@@ -270,7 +321,15 @@ function DroppableColumn({
   )
 }
 
+/**
+ * Main application component.
+ *
+ * App owns the primary client-side state and coordinates communication
+ * between the React UI and Supabase.
+ */
 function App() {
+  // ----- UI state -----------------------------------------------------
+  // Controls modal visibility, currently selected records, and menus.
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [isLabelModalOpen, setIsLabelModalOpen] = useState(false)
   const [isManageLabelsModalOpen, setIsManageLabelsModalOpen] =
@@ -288,10 +347,13 @@ function App() {
   const [openMenuTaskId, setOpenMenuTaskId] =
     useState<string | null>(null)
 
+  // ----- Application data --------------------------------------------
+  // These arrays are the client-side representation of persisted Supabase data.
   const [labels, setLabels] = useState<Label[]>([])
   const [taskLabels, setTaskLabels] = useState<TaskLabel[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
 
+  // ----- Request / error state ---------------------------------------
   const [isTasksLoading, setIsTasksLoading] = useState(true)
   const [tasksError, setTasksError] = useState<string | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
@@ -299,12 +361,18 @@ function App() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSavingTask, setIsSavingTask] = useState(false)
 
+  // ----- Filter state -------------------------------------------------
+  // Filtering changes the rendered view, not the underlying database rows.
   const [searchQuery, setSearchQuery] = useState('')
   const [priorityFilter, setPriorityFilter] =
     useState<TaskPriority | 'all'>('all')
   const [labelFilter, setLabelFilter] =
     useState<string | 'all'>('all')
 
+  /**
+   * Writes a lightweight audit/history event to task_activity.
+   * The main tasks table stores current state; this table stores what happened.
+   */
   const recordTaskActivity = async (
     taskId: string,
     action: TaskActivityAction,
@@ -342,6 +410,17 @@ function App() {
     }
   }
 
+  /**
+   * Initial application load.
+   *
+   * 1. Restore an existing Supabase session or create an anonymous one.
+   * 2. Load tasks, labels, and task-label relationships.
+   * 3. Store the returned rows in React state.
+   * 4. React renders the board from that state.
+   *
+   * RLS is enforced by Supabase/PostgreSQL during these requests, so the
+   * authenticated user can only receive rows allowed by the database policies.
+   */
   useEffect(() => {
     const initializeApp = async () => {
       setIsAuthLoading(true)
@@ -429,6 +508,13 @@ function App() {
     void initializeApp()
   }, [])
 
+  /**
+   * Creates a new task.
+   *
+   * The form is read and validated in the client, then an INSERT is sent to
+   * Supabase. After PostgreSQL creates the row, Supabase returns it and that
+   * returned Task object is added to React state, causing the board to re-render.
+   */
   const handleCreateTask = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -439,6 +525,8 @@ function App() {
     const form = event.currentTarget
     const formData = new FormData(form)
 
+    // Frontend validation gives immediate user feedback. Database constraints
+    // and RLS still provide the backend enforcement.
     const title = String(formData.get('title') ?? '').trim()
     const description = String(
       formData.get('description') ?? '',
@@ -467,6 +555,8 @@ function App() {
       return
     }
 
+    // Persist the new task. status starts as "todo", so every new task
+    // enters the first Kanban column.
     const { data, error: insertError } = await supabase
       .from('tasks')
       .insert({
@@ -491,6 +581,8 @@ function App() {
       'created',
     )
 
+    // Updating React state changes the data the UI is rendered from.
+    // React then re-renders and the new card appears without a page refresh.
     setTasks((currentTasks) => [
       data as Task,
       ...currentTasks,
@@ -501,6 +593,10 @@ function App() {
     setIsSavingTask(false)
   }
 
+  /**
+   * Updates an existing task in Supabase, then replaces the matching object
+   * in React state with the row returned by the database.
+   */
   const handleEditTask = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -563,6 +659,11 @@ function App() {
     setIsSavingTask(false)
   }
 
+  /**
+   * Deletes a task after confirmation.
+   * After persistence succeeds, related client-side state is also cleaned up
+   * so the UI immediately reflects the deletion.
+   */
   const handleDeleteTask = async (task: Task) => {
     const confirmed = window.confirm(
       `Delete "${task.title}"? This action cannot be undone.`,
@@ -604,6 +705,15 @@ function App() {
     }
   }
 
+  /**
+   * Handles a completed drag-and-drop operation.
+   *
+   * This uses an optimistic update:
+   * 1. Remember the previous task status.
+   * 2. Update React state immediately so the card moves right away.
+   * 3. Persist the new status to Supabase.
+   * 4. If persistence fails, restore the previous React state.
+   */
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
 
@@ -631,11 +741,14 @@ function App() {
       return
     }
 
+    // Save the old value before the optimistic UI update so it can be
+    // restored if the database request fails.
     const previousStatus = movedTask.status
 
     setActionError(null)
     setOpenMenuTaskId(null)
 
+    // Optimistic UI update: move the card before waiting for Supabase.
     setTasks((currentTasks) =>
       currentTasks.map((task) =>
         task.id === taskId
@@ -652,6 +765,8 @@ function App() {
       .eq('id', taskId)
 
     if (updateError) {
+      // Roll back the optimistic update so the UI does not claim a state
+      // that the database failed to save.
       setTasks((currentTasks) =>
         currentTasks.map((task) =>
           task.id === taskId
@@ -675,6 +790,7 @@ function App() {
     )
   }
 
+  // Populate the inline label editor with the selected label's current data.
   const startEditingLabel = (label: Label) => {
     setEditingLabelId(label.id)
     setEditingLabelName(label.name)
@@ -688,6 +804,11 @@ function App() {
     setEditingLabelColor('purple')
   }
 
+  /**
+   * Persists label name/color changes and updates the shared label state.
+   * Because task cards reference the same label objects by id, changing a
+   * label once is reflected everywhere that label is rendered.
+   */
   const saveEditingLabel = async (label: Label) => {
     const newName = editingLabelName.trim()
 
@@ -728,6 +849,11 @@ function App() {
     cancelEditingLabel()
   }
 
+  /**
+   * Deletes a label and removes its client-side task assignments.
+   * The database relationship uses cascading deletion for related task_labels
+   * rows, while the state cleanup keeps the current UI in sync immediately.
+   */
   const deleteLabel = async (label: Label) => {
     const assignmentCount = taskLabels.filter(
       (taskLabel) => taskLabel.label_id === label.id,
@@ -777,6 +903,8 @@ function App() {
     }
   }
 
+  // ----- Render guards ------------------------------------------------
+  // Show explicit loading/error screens before rendering the main application.
   if (isAuthLoading) {
     return (
       <main className="status-screen">
@@ -811,6 +939,9 @@ function App() {
     )
   }
 
+  // ----- Derived / computed data --------------------------------------
+  // Build a filtered view from the original tasks array. No task rows are
+  // changed in Supabase simply because the user applies a filter.
   const normalizedSearch = searchQuery.trim().toLowerCase()
 
   const filteredTasks = tasks.filter((task) => {
@@ -834,6 +965,8 @@ function App() {
           taskLabel.label_id === labelFilter,
       )
 
+    // All active conditions must match, so search, priority, and labels
+    // can be combined at the same time.
     return matchesSearch && matchesPriority && matchesLabel
   })
 
@@ -848,6 +981,7 @@ function App() {
     setLabelFilter('all')
   }
 
+  // Resolve a task's labels through task_labels, the join-table state.
   const getLabelsForTask = (taskId: string) =>
     labels.filter((label) =>
       taskLabels.some(
@@ -857,6 +991,8 @@ function App() {
       ),
     )
 
+  // Board statistics are derived from the current task state rather than
+  // stored separately in the database.
   const completedTasks = tasks.filter(
     (task) => task.status === 'done',
   ).length
@@ -879,6 +1015,9 @@ function App() {
       ? 0
       : Math.round((completedTasks / tasks.length) * 100)
 
+  // ----- Main UI -------------------------------------------------------
+  // Everything below is JSX: an HTML-like description of what React should
+  // render from the current state.
   return (
     <main
       className="app-shell"
@@ -932,6 +1071,7 @@ function App() {
         </div>
       </header>
 
+      {/* Label management: edit name/color or delete reusable labels. */}
       {isManageLabelsModalOpen && (
         <div
           className="modal-backdrop"
@@ -1094,6 +1234,7 @@ function App() {
         </div>
       )}
 
+      {/* New-label form persists labels in Supabase and then updates state. */}
       {isLabelModalOpen && (
         <div
           className="modal-backdrop"
@@ -1234,6 +1375,7 @@ function App() {
         </div>
       )}
 
+      {/* Task-details modal: current task values, labels, and activity history. */}
       {selectedTask && (
         <div
           className="modal-backdrop"
@@ -1280,6 +1422,8 @@ function App() {
             </p>
 
             <div className="task-labels-section">
+              {/* Checking/unchecking a label inserts or deletes a task_labels
+                  join-table row, which represents the many-to-many relationship. */}
               <h3>Labels</h3>
 
               {labels.length === 0 ? (
@@ -1386,6 +1530,8 @@ function App() {
               )}
             </div>
 
+            {/* Activity is loaded from task_activity separately from the task
+                record so current state and historical events stay distinct. */}
             <div className="task-activity">
               <h3>Activity</h3>
 
@@ -1426,6 +1572,7 @@ function App() {
         </div>
       )}
 
+      {/* Summary values are calculated from React task state. */}
       <section
         className="board-summary"
         aria-label="Board summary"
@@ -1464,6 +1611,7 @@ function App() {
         </div>
       )}
 
+      {/* Search and filters create a derived view of tasks in memory. */}
       <section
         className="board-toolbar"
         aria-label="Search and filter tasks"
@@ -1553,6 +1701,8 @@ function App() {
         </p>
       </section>
 
+      {/* DndContext connects the board to dnd-kit. handleDragEnd contains
+          the application-specific meaning of a drop: changing task status. */}
       <DndContext onDragEnd={handleDragEnd}>
         <section className="board" aria-label="Task board">
           {columns.map((column) => {
@@ -1644,6 +1794,7 @@ function App() {
         </section>
       </DndContext>
 
+      {/* New-task form. Submission is handled by handleCreateTask above. */}
       {isTaskModalOpen && (
         <div
           className="modal-backdrop"
@@ -1752,6 +1903,7 @@ function App() {
         </div>
       )}
 
+      {/* Edit-task form. The selected Task object supplies the initial values. */}
       {editingTask && (
         <div
           className="modal-backdrop"
