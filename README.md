@@ -2,18 +2,16 @@
 
 FlowBoard is a Kanban-style task management application built with React, TypeScript, Supabase, and dnd-kit.
 
-The application allows users to create, organize, edit, move, search, filter, and delete tasks across four workflow stages:
+The application allows users to create, organize, edit, move, search, filter, label, and delete tasks across four workflow stages:
 
 - To Do
 - In Progress
 - In Review
 - Done
 
-Each visitor is automatically signed in as an anonymous guest. Supabase Row Level Security ensures that users can only access their own tasks.
+Each visitor is automatically signed in as an anonymous guest. Supabase Row Level Security ensures that users can only access their own tasks, labels, and task activity.
 
 ## Live Demo
-
-Add your deployed application URL here:
 
 [FlowBoard](https://next-play-task-board-black.vercel.app/)
 
@@ -81,16 +79,71 @@ The search field filters tasks by:
 
 Search results update immediately while the user types.
 
-### Priority Filtering
+### Priority and Label Filtering
 
-Users can filter the board by:
+Users can filter the board by priority and label.
+
+Priority options include:
 
 - All priorities
 - High
 - Normal
 - Low
 
-Search and priority filters can be used together.
+Label filtering is populated dynamically from the user's saved labels.
+
+Search, priority filtering, and label filtering can be combined.
+
+### Labels and Tags
+
+Users can create reusable labels and assign them to tasks.
+
+Labels include:
+
+- A custom name
+- A selectable color
+- Many-to-many assignment across tasks
+
+Assigned labels appear directly on task cards.
+
+### Label Management
+
+The Manage Labels interface allows users to:
+
+- Rename labels
+- Change label colors
+- Delete labels
+
+Deleting a label automatically removes its related task-label assignments.
+
+### Task Activity History
+
+FlowBoard records important task activity in Supabase, including:
+
+- Task creation
+- Status changes
+- Task edits
+
+The task details modal displays activity in reverse chronological order.
+
+### Due-Date Indicators
+
+Tasks with due dates display contextual indicators for:
+
+- Overdue tasks
+- Tasks due today
+- Tasks due soon
+
+Completed tasks are excluded from overdue warnings.
+
+### Board Summary
+
+The dashboard displays summary statistics for:
+
+- Total tasks
+- Completed tasks
+- Overdue tasks
+- Completion percentage
 
 ### Guest Authentication
 
@@ -102,20 +155,22 @@ The guest session is normally restored when the same user returns using the same
 
 ### Data Privacy and Row Level Security
 
-Every task is stored with the authenticated guest user's ID.
+Application data is tied to the authenticated guest user's ID.
 
-Supabase Row Level Security policies ensure that users can only:
+Supabase Row Level Security policies ensure that users can only access data belonging to their own workspace.
 
-- View their own tasks
-- Create tasks assigned to their own account
-- Update their own tasks
-- Delete their own tasks
+RLS is used for:
+
+- Tasks
+- Labels
+- Task-label assignments
+- Task activity
 
 ### Persistent Data
 
-Tasks are stored in a Supabase PostgreSQL database.
+Application data is stored in a Supabase PostgreSQL database.
 
-Tasks remain available after:
+Tasks and related data remain available after:
 
 - Refreshing the page
 - Closing and reopening the browser
@@ -164,6 +219,10 @@ On smaller displays:
 - Supabase JavaScript Client
 - Supabase Row Level Security
 
+### Deployment
+
+- Vercel
+
 ### Version Control
 
 - Git
@@ -179,155 +238,141 @@ The application flow is:
 
 1. The app checks for an existing Supabase session.
 2. If no session exists, the user is signed in anonymously.
-3. The app retrieves tasks from Supabase.
+3. The app retrieves tasks, labels, and task-label assignments from Supabase.
 4. Row Level Security limits the results to the current guest user.
-5. Users create, edit, move, search, filter, or delete tasks.
+5. Users create, edit, move, search, filter, label, or delete tasks.
 6. Database changes are saved through the Supabase JavaScript client.
 7. React state updates the interface immediately.
+8. Task activity is recorded for important changes.
 
 No custom backend server is required for the current version.
 
 ## Database Schema
 
-The application uses a tasks table with the following fields:
+### `tasks`
 
-- id: UUID primary key
-- title: Required text
-- description: Optional text
-- status: todo, in_progress, in_review, or done
-- priority: low, normal, or high
-- due_date: Optional date
-- user_id: UUID linked to the authenticated Supabase user
-- created_at: Timestamp created automatically
+Stores the Kanban tasks.
 
-## SQL Schema
+Fields include:
 
-create table public.tasks (
-  id uuid primary key default gen_random_uuid(),
+- `id` — UUID primary key
+- `title` — Required text
+- `description` — Optional text
+- `status` — `todo`, `in_progress`, `in_review`, or `done`
+- `priority` — `low`, `normal`, or `high`
+- `due_date` — Optional date
+- `user_id` — UUID linked to the authenticated Supabase user
+- `created_at` — Automatically generated timestamp
 
-  title text not null
-    check (char_length(trim(title)) > 0),
+### `labels`
 
-  description text,
+Stores reusable user-created labels.
 
-  status text not null default 'todo'
-    check (
-      status in (
-        'todo',
-        'in_progress',
-        'in_review',
-        'done'
-      )
-    ),
+Fields include:
 
-  priority text not null default 'normal'
-    check (
-      priority in (
-        'low',
-        'normal',
-        'high'
-      )
-    ),
+- `id` — UUID primary key
+- `user_id` — UUID linked to the authenticated Supabase user
+- `name` — Label name
+- `color` — Label color
+- `created_at` — Automatically generated timestamp
 
-  due_date date,
+Each user has a unique label name constraint.
 
-  user_id uuid not null
-    references auth.users(id)
-    on delete cascade,
+### `task_labels`
 
-  created_at timestamptz not null default now()
-);
+Join table that creates the many-to-many relationship between tasks and labels.
 
-alter table public.tasks enable row level security;
+Fields include:
 
-create policy "Users can view their own tasks"
-on public.tasks
-for select
-to authenticated
-using (
-  auth.uid() is not null
-  and auth.uid() = user_id
-);
+- `task_id` — References `tasks.id`
+- `label_id` — References `labels.id`
+- `user_id` — UUID linked to the authenticated user
+- `created_at` — Automatically generated timestamp
 
-create policy "Users can create their own tasks"
-on public.tasks
-for insert
-to authenticated
-with check (
-  auth.uid() is not null
-  and auth.uid() = user_id
-);
+The combination of `task_id` and `label_id` forms the primary key.
 
-create policy "Users can update their own tasks"
-on public.tasks
-for update
-to authenticated
-using (
-  auth.uid() is not null
-  and auth.uid() = user_id
-)
-with check (
-  auth.uid() is not null
-  and auth.uid() = user_id
-);
+Task-label rows are removed automatically when the related task or label is deleted.
 
-create policy "Users can delete their own tasks"
-on public.tasks
-for delete
-to authenticated
-using (
-  auth.uid() is not null
-  and auth.uid() = user_id
-);
+### `task_activity`
+
+Stores task history.
+
+Fields include:
+
+- `id` — UUID primary key
+- `task_id` — References the related task
+- `user_id` — UUID linked to the authenticated user
+- `action` — Activity type
+- `from_value` — Optional previous value
+- `to_value` — Optional new value
+- `created_at` — Automatically generated timestamp
+
+Current activity types include:
+
+- `created`
+- `status_changed`
+- `edited`
 
 ## Local Setup
 
-Prerequisites:
+### Prerequisites
 
 - Node.js
 - npm
 - Git
 - A Supabase project
 
-Clone the repository:
+### Clone the repository
 
+```bash
 git clone https://github.com/richardrhanly-us/next-play-task-board.git
+```
 
 Move into the project folder:
 
+```bash
 cd next-play-task-board
+```
 
 Install dependencies:
 
+```bash
 npm install
+```
 
-Create a file named .env.local in the project root.
+Create a file named `.env.local` in the project root.
 
 Add:
 
+```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+```
 
-Do not use a Supabase secret key or service-role key.
+Do not use a Supabase secret key or service-role key in the frontend.
 
 Start the development server:
 
+```bash
 npm run dev
+```
 
 Open the local address shown in the terminal, usually:
 
+```text
 http://localhost:5173
+```
 
 ## How to Use the App
 
 ### Create a Task
 
-1. Click New Task.
+1. Click **New Task**.
 2. Enter a task title.
 3. Optionally enter a description.
 4. Choose a priority.
 5. Optionally select a due date.
-6. Click Create Task.
+6. Click **Create Task**.
 
 The task appears in the To Do column.
 
@@ -342,15 +387,39 @@ The task status is updated and saved to Supabase.
 ### Edit a Task
 
 1. Click the three-dot menu on a task card.
-2. Select Edit Task.
+2. Select **Edit Task**.
 3. Update the task details.
-4. Click Save Changes.
+4. Click **Save Changes**.
 
 ### Delete a Task
 
 1. Click the three-dot menu on a task card.
-2. Select Delete Task.
+2. Select **Delete Task**.
 3. Confirm the deletion.
+
+### Create a Label
+
+1. Click **New Label**.
+2. Enter a label name.
+3. Choose a color.
+4. Create the label.
+
+### Assign Labels to a Task
+
+1. Open a task's details.
+2. Use the Labels section.
+3. Select or clear the labels assigned to the task.
+
+Assigned labels appear on the task card.
+
+### Manage Labels
+
+1. Click **Manage Labels**.
+2. Choose **Edit** to rename or recolor a label.
+3. Click **Save** to persist changes.
+4. Choose **Delete** to permanently remove a label.
+
+Deleting a label also removes its assignments from tasks.
 
 ### Search Tasks
 
@@ -358,16 +427,19 @@ Enter text in the search box.
 
 The board filters tasks by title and description.
 
-### Filter by Priority
+### Filter Tasks
 
-Use the Priority dropdown to display:
+Use the Priority and Label dropdowns to narrow the board.
 
-- All tasks
-- High-priority tasks
-- Normal-priority tasks
-- Low-priority tasks
+Search, priority, and label filters can be used together.
 
-Click Clear Filters to restore the full board.
+Use **Clear Filters** to restore the full board.
+
+### View Task Activity
+
+Open a task's details to see its activity history.
+
+The newest events appear first.
 
 ## Advanced Features
 
@@ -377,7 +449,7 @@ Each visitor automatically receives a private guest workspace without creating a
 
 ### Row Level Security
 
-Supabase Row Level Security protects all task operations at the database level rather than relying only on frontend filtering.
+Supabase Row Level Security protects application data at the database level rather than relying only on frontend filtering.
 
 ### Optimistic Drag-and-Drop Updates
 
@@ -385,15 +457,30 @@ When a task is moved, the interface updates immediately.
 
 The database update runs afterward. If it fails, the application restores the task to its previous column and displays an error.
 
-### Search and Combined Filtering
+### Combined Search and Filtering
 
-Search and priority filters can operate at the same time.
+Search, priority filtering, and label filtering can operate at the same time.
 
 The application creates a filtered view without modifying the original task data or stored database records.
 
+### Many-to-Many Label Relationships
+
+Tasks and labels use a `task_labels` join table.
+
+This allows:
+
+- One task to have multiple labels
+- One label to be assigned to multiple tasks
+
+### Activity Tracking
+
+Task creation, edits, and workflow status changes are recorded separately from the task record itself.
+
+This preserves a lightweight history of user actions.
+
 ### Full Task Management
 
-Users can create, read, update, move, and delete tasks from the same interface.
+Users can create, read, update, move, label, filter, and delete tasks from the same interface.
 
 ### Responsive Interaction Design
 
@@ -403,11 +490,11 @@ The board, forms, controls, menus, and modals adapt for smaller screens.
 
 - The Supabase service-role key is never used in the frontend.
 - Only the public publishable key is used by the browser.
-- Row Level Security is enabled on the tasks table.
-- Every task is tied to the authenticated guest user's ID.
-- .env.local is excluded from GitHub.
+- Row Level Security is enabled on application tables.
+- Records are tied to the authenticated guest user's ID.
+- `.env.local` is excluded from GitHub.
 - User input is validated before database operations.
-- Task ownership is enforced by Supabase policies.
+- Ownership is enforced by Supabase policies.
 
 ## Tradeoffs
 
@@ -419,7 +506,7 @@ A user opening the app on a different device or browser may receive a separate g
 
 ### Direct Supabase Access
 
-The frontend communicates directly with Supabase, which keeps the architecture simple and reduces hosting costs.
+The frontend communicates directly with Supabase, which keeps the architecture simple and reduces hosting complexity.
 
 A larger production application might introduce a dedicated backend API for more complex business rules, auditing, rate limiting, or integrations.
 
@@ -429,23 +516,24 @@ The current version stores task status but does not persist custom vertical orde
 
 Tasks are displayed using their creation order.
 
+### Activity Detail
+
+The current activity log records major task events, but task edits are stored as a general edit event rather than tracking every changed field individually.
+
 ## Future Improvements
 
 Possible future improvements include:
 
 - Persistent task ordering within each column
-- Board summary statistics
-- Overdue and due-soon indicators
 - Custom confirmation dialogs
 - Toast notifications
 - Task comments
-- Activity history
-- Labels and tags
 - Team members and assignees
 - Real-time synchronization across browser tabs
 - Email or permanent account conversion
 - Automated unit and integration tests
 - Keyboard-accessible drag-and-drop improvements
+- More detailed field-level activity history
 
 ## Author
 
