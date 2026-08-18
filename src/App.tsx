@@ -600,6 +600,29 @@ function App() {
     setPriorityFilter('all')
   }
 
+
+  const completedTasks = tasks.filter(
+    (task) => task.status === 'done',
+  ).length
+
+  const overdueTasks = tasks.filter((task) => {
+    if (!task.due_date || task.status === 'done') {
+      return false
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const dueDate = new Date(`${task.due_date}T00:00:00`)
+
+    return dueDate < today
+  }).length
+
+  const completionPercentage =
+    tasks.length === 0
+      ? 0
+      : Math.round((completedTasks / tasks.length) * 100)
+
   return (
     <main
       className="app-shell"
@@ -627,6 +650,30 @@ function App() {
           + New task
         </button>
       </header>
+      <section
+        className="board-summary"
+        aria-label="Board summary"
+      >
+        <div className="summary-card">
+          <span>Total tasks</span>
+          <strong>{tasks.length}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Completed</span>
+          <strong>{completedTasks}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Overdue</span>
+          <strong>{overdueTasks}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Completion</span>
+          <strong>{completionPercentage}%</strong>
+        </div>
+      </section>
 
       {actionError && (
         <div className="action-error" role="alert">
