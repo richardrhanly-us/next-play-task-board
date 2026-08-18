@@ -18,6 +18,45 @@ import './App.css'
 type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
 type TaskPriority = 'low' | 'normal' | 'high'
 
+type DueDateStatus =
+  | 'overdue'
+  | 'today'
+  | 'soon'
+  | 'normal'
+  | null
+
+function getDueDateStatus(
+  dueDate: string | null,
+  taskStatus: TaskStatus,
+): DueDateStatus {
+  if (!dueDate || taskStatus === 'done') {
+    return null
+  }
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const due = new Date(`${dueDate}T00:00:00`)
+
+  const differenceInDays = Math.ceil(
+    (due.getTime() - today.getTime()) / 86_400_000,
+  )
+
+  if (differenceInDays < 0) {
+    return 'overdue'
+  }
+
+  if (differenceInDays === 0) {
+    return 'today'
+  }
+
+  if (differenceInDays <= 3) {
+    return 'soon'
+  }
+
+  return 'normal'
+}
+
 interface Task {
   id: string
   title: string
@@ -70,7 +109,10 @@ function DraggableTask({
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
       }
     : undefined
-
+  const dueDateStatus = getDueDateStatus(
+    task.due_date,
+    task.status,
+  )
   return (
     <article
       ref={setNodeRef}
@@ -130,7 +172,14 @@ function DraggableTask({
 
       {task.due_date && (
         <div className="task-card-footer">
-          <span>Due {task.due_date}</span>
+          <span
+            className={`due-date ${dueDateStatus ?? 'normal'}`}
+          >
+            {dueDateStatus === 'overdue' && 'Overdue · '}
+            {dueDateStatus === 'today' && 'Due today · '}
+            {dueDateStatus === 'soon' && 'Due soon · '}
+            {task.due_date}
+          </span>
         </div>
       )}
     </article>
