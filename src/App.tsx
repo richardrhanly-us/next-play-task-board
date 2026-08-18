@@ -4,35 +4,71 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react'
-
 import {
   DndContext,
   useDraggable,
   useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core'
-
 import { supabase } from './lib/supabase'
 import './App.css'
 
 type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done'
 type TaskPriority = 'low' | 'normal' | 'high'
+type DueDateStatus = 'overdue' | 'today' | 'soon' | 'normal' | null
+type TaskActivityAction = 'created' | 'status_changed' | 'edited'
 
-type DueDateStatus =
-  | 'overdue'
-  | 'today'
-  | 'soon'
-  | 'normal'
-  | null
+interface Label {
+  id: string
+  user_id: string
+  name: string
+  color: string | null
+  created_at: string
+}
 
-type TaskActivityAction =
-  | 'created'
-  | 'status_changed'
-  | 'edited'
+interface TaskLabel {
+  task_id: string
+  label_id: string
+  user_id: string
+  created_at: string
+}
 
+interface Task {
+  id: string
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: TaskPriority
+  due_date: string | null
+  user_id: string
+  created_at: string
+}
 
+interface TaskActivity {
+  id: string
+  task_id: string
+  user_id: string
+  action: TaskActivityAction
+  from_value: string | null
+  to_value: string | null
+  created_at: string
+}
 
+const columns: { id: TaskStatus; title: string }[] = [
+  { id: 'todo', title: 'To Do' },
+  { id: 'in_progress', title: 'In Progress' },
+  { id: 'in_review', title: 'In Review' },
+  { id: 'done', title: 'Done' },
+]
 
+const labelColors = [
+  'purple',
+  'blue',
+  'green',
+  'yellow',
+  'red',
+  'gray',
+] as const
 
 function formatTaskStatus(status: string | null) {
   if (!status) {
@@ -49,6 +85,14 @@ function formatTaskStatus(status: string | null) {
   return labels[status] ?? status
 }
 
+function formatPriority(priority: TaskPriority) {
+  return priority.charAt(0).toUpperCase() + priority.slice(1)
+}
+
+function formatColorName(color: string) {
+  return color.charAt(0).toUpperCase() + color.slice(1)
+}
+
 function getDueDateStatus(
   dueDate: string | null,
   taskStatus: TaskStatus,
@@ -61,7 +105,6 @@ function getDueDateStatus(
   today.setHours(0, 0, 0, 0)
 
   const due = new Date(`${dueDate}T00:00:00`)
-
   const differenceInDays = Math.ceil(
     (due.getTime() - today.getTime()) / 86_400_000,
   )
@@ -81,26 +124,9 @@ function getDueDateStatus(
   return 'normal'
 }
 
-interface Task {
-  id: string
-  title: string
-  description: string | null
-  status: TaskStatus
-  priority: TaskPriority
-  due_date: string | null
-  user_id: string
-  created_at: string
-}
-
-const columns: { id: TaskStatus; title: string }[] = [
-  { id: 'todo', title: 'To Do' },
-  { id: 'in_progress', title: 'In Progress' },
-  { id: 'in_review', title: 'In Review' },
-  { id: 'done', title: 'Done' },
-]
-
 interface DraggableTaskProps {
   task: Task
+  labels: Label[]
   isMenuOpen: boolean
   onToggleMenu: () => void
   onEdit: () => void
@@ -108,12 +134,9 @@ interface DraggableTaskProps {
   onOpen: () => void
 }
 
-/*
- * Displays one task card and connects it to dnd-kit.
- * The entire card can be dragged between board columns.
- */
 function DraggableTask({
   task,
+  labels,
   isMenuOpen,
   onToggleMenu,
   onEdit,
@@ -135,19 +158,18 @@ function DraggableTask({
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
       }
     : undefined
-  const dueDateStatus = getDueDateStatus(
-    task.due_date,
-    task.status,
-  )
+
+  const dueDateStatus = getDueDateStatus(task.due_date, task.status)
+
   return (
-      <article
-        ref={setNodeRef}
-        style={style}
-        className={`task-card ${isDragging ? 'dragging' : ''}`}
-        onClick={onOpen}
-        {...listeners}
-        {...attributes}
-      >
+    <article
+      ref={setNodeRef}
+      style={style}
+      className={`task-card ${isDragging ? 'dragging' : ''}`}
+      onClick={onOpen}
+      {...listeners}
+      {...attributes}
+    >
       <div className="task-card-top">
         <span className={`priority-badge ${task.priority}`}>
           {task.priority}
@@ -174,16 +196,11 @@ function DraggableTask({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
-              <button
-                type="button"
-                onClick={onOpen}
-              >
+              <button type="button" onClick={onOpen}>
                 View details
               </button>
-              <button
-                type="button"
-                onClick={onEdit}
-              >
+
+              <button type="button" onClick={onEdit}>
                 Edit task
               </button>
 
@@ -201,13 +218,24 @@ function DraggableTask({
 
       <h3>{task.title}</h3>
 
+      {labels.length > 0 && (
+        <div className="task-card-labels">
+          {labels.map((label) => (
+            <span
+              className={`task-card-label ${label.color ?? 'gray'}`}
+              key={label.id}
+            >
+              {label.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {task.description && <p>{task.description}</p>}
 
       {task.due_date && (
         <div className="task-card-footer">
-          <span
-            className={`due-date ${dueDateStatus ?? 'normal'}`}
-          >
+          <span className={`due-date ${dueDateStatus ?? 'normal'}`}>
             {dueDateStatus === 'overdue' && 'Overdue · '}
             {dueDateStatus === 'today' && 'Due today · '}
             {dueDateStatus === 'soon' && 'Due soon · '}
@@ -224,10 +252,6 @@ interface DroppableColumnProps {
   children: ReactNode
 }
 
-/*
- * Turns a task-list area into a drop target.
- * The column highlights when a task is dragged over it.
- */
 function DroppableColumn({
   columnId,
   children,
@@ -248,43 +272,38 @@ function DroppableColumn({
 
 function App() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState(false)
+  const [isManageLabelsModalOpen, setIsManageLabelsModalOpen] =
+    useState(false)
+
+  const [editingLabelId, setEditingLabelId] =
+    useState<string | null>(null)
+  const [editingLabelName, setEditingLabelName] = useState('')
+  const [editingLabelColor, setEditingLabelColor] = useState('purple')
+
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [taskActivity, setTaskActivity] = useState<TaskActivity[]>([])
 
-  const [selectedTask, setSelectedTask] =
-  useState<Task | null>(null)
+  const [openMenuTaskId, setOpenMenuTaskId] =
+    useState<string | null>(null)
 
-  const [taskActivity, setTaskActivity] = useState<
-    {
-      id: string
-      task_id: string
-      user_id: string
-      action: TaskActivityAction
-      from_value: string | null
-      to_value: string | null
-      created_at: string
-    }[]
-  >([])
-
-  const [openMenuTaskId, setOpenMenuTaskId] = useState<string | null>(
-    null,
-  )
-
+  const [labels, setLabels] = useState<Label[]>([])
+  const [taskLabels, setTaskLabels] = useState<TaskLabel[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+
   const [isTasksLoading, setIsTasksLoading] = useState(true)
   const [tasksError, setTasksError] = useState<string | null>(null)
-
   const [isAuthLoading, setIsAuthLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
-
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSavingTask, setIsSavingTask] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
-
   const [priorityFilter, setPriorityFilter] =
     useState<TaskPriority | 'all'>('all')
-
-
+  const [labelFilter, setLabelFilter] =
+    useState<string | 'all'>('all')
 
   const recordTaskActivity = async (
     taskId: string,
@@ -315,7 +334,6 @@ function App() {
         to_value: toValue,
       })
 
-
     if (error) {
       console.error(
         'Unable to record task activity:',
@@ -323,11 +341,7 @@ function App() {
       )
     }
   }
-  /*
-   * Runs once when the application first loads.
-   * It restores or creates an anonymous Supabase session and then
-   * retrieves only the tasks belonging to that guest user.
-   */
+
   useEffect(() => {
     const initializeApp = async () => {
       setIsAuthLoading(true)
@@ -363,15 +377,49 @@ function App() {
         }
       }
 
-      const { data, error: tasksLoadError } = await supabase
-        .from('tasks')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const { data: tasksData, error: tasksLoadError } =
+        await supabase
+          .from('tasks')
+          .select('*')
+          .order('created_at', { ascending: false })
 
       if (tasksLoadError) {
         setTasksError(tasksLoadError.message)
       } else {
-        setTasks((data ?? []) as Task[])
+        setTasks((tasksData ?? []) as Task[])
+      }
+
+      const { data: labelsData, error: labelsLoadError } =
+        await supabase
+          .from('labels')
+          .select('*')
+          .order('name', { ascending: true })
+
+      if (labelsLoadError) {
+        console.error(
+          'Unable to load labels:',
+          labelsLoadError.message,
+        )
+      } else {
+        setLabels((labelsData ?? []) as Label[])
+      }
+
+      const {
+        data: taskLabelsData,
+        error: taskLabelsLoadError,
+      } = await supabase
+        .from('task_labels')
+        .select('*')
+
+      if (taskLabelsLoadError) {
+        console.error(
+          'Unable to load task labels:',
+          taskLabelsLoadError.message,
+        )
+      } else {
+        setTaskLabels(
+          (taskLabelsData ?? []) as TaskLabel[],
+        )
       }
 
       setIsAuthLoading(false)
@@ -381,10 +429,6 @@ function App() {
     void initializeApp()
   }, [])
 
-  /*
-   * Reads the new-task form, saves the task to Supabase,
-   * and adds the returned database row to the local board state.
-   */
   const handleCreateTask = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -396,15 +440,12 @@ function App() {
     const formData = new FormData(form)
 
     const title = String(formData.get('title') ?? '').trim()
-
     const description = String(
       formData.get('description') ?? '',
     ).trim()
-
     const priority = String(
       formData.get('priority') ?? 'normal',
     ) as TaskPriority
-
     const dueDate = String(formData.get('dueDate') ?? '')
 
     if (!title) {
@@ -460,10 +501,6 @@ function App() {
     setIsSavingTask(false)
   }
 
-  /*
-   * Updates an existing task in Supabase and replaces the matching
-   * task in the local React state with the updated database row.
-   */
   const handleEditTask = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -477,17 +514,13 @@ function App() {
     setIsSavingTask(true)
 
     const formData = new FormData(event.currentTarget)
-
     const title = String(formData.get('title') ?? '').trim()
-
     const description = String(
       formData.get('description') ?? '',
     ).trim()
-
     const priority = String(
       formData.get('priority') ?? 'normal',
     ) as TaskPriority
-
     const dueDate = String(formData.get('dueDate') ?? '')
 
     if (!title) {
@@ -514,11 +547,11 @@ function App() {
       return
     }
 
-   
     await recordTaskActivity(
       editingTask.id,
       'edited',
     )
+
     setTasks((currentTasks) =>
       currentTasks.map((task) =>
         task.id === editingTask.id ? (data as Task) : task,
@@ -530,10 +563,6 @@ function App() {
     setIsSavingTask(false)
   }
 
-  /*
-   * Confirms deletion, removes the task from Supabase,
-   * and then removes it from the displayed task list.
-   */
   const handleDeleteTask = async (task: Task) => {
     const confirmed = window.confirm(
       `Delete "${task.title}"? This action cannot be undone.`,
@@ -563,13 +592,18 @@ function App() {
         (currentTask) => currentTask.id !== task.id,
       ),
     )
+
+    setTaskLabels((currentTaskLabels) =>
+      currentTaskLabels.filter(
+        (taskLabel) => taskLabel.task_id !== task.id,
+      ),
+    )
+
+    if (selectedTask?.id === task.id) {
+      setSelectedTask(null)
+    }
   }
 
-  /*
-   * Runs after a task is dropped into a column.
-   * The card moves immediately in React, then Supabase is updated.
-   * If the database update fails, the card returns to its old column.
-   */
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
 
@@ -641,6 +675,108 @@ function App() {
     )
   }
 
+  const startEditingLabel = (label: Label) => {
+    setEditingLabelId(label.id)
+    setEditingLabelName(label.name)
+    setEditingLabelColor(label.color ?? 'gray')
+    setActionError(null)
+  }
+
+  const cancelEditingLabel = () => {
+    setEditingLabelId(null)
+    setEditingLabelName('')
+    setEditingLabelColor('purple')
+  }
+
+  const saveEditingLabel = async (label: Label) => {
+    const newName = editingLabelName.trim()
+
+    if (!newName) {
+      setActionError('Label name is required.')
+      return
+    }
+
+    setActionError(null)
+
+    const { data, error } = await supabase
+      .from('labels')
+      .update({
+        name: newName,
+        color: editingLabelColor,
+      })
+      .eq('id', label.id)
+      .select()
+      .single()
+
+    if (error) {
+      setActionError(
+        `Unable to update label: ${error.message}`,
+      )
+      return
+    }
+
+    setLabels((currentLabels) =>
+      currentLabels
+        .map((currentLabel) =>
+          currentLabel.id === label.id
+            ? (data as Label)
+            : currentLabel,
+        )
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    )
+
+    cancelEditingLabel()
+  }
+
+  const deleteLabel = async (label: Label) => {
+    const assignmentCount = taskLabels.filter(
+      (taskLabel) => taskLabel.label_id === label.id,
+    ).length
+
+    const warning =
+      assignmentCount === 0
+        ? `Delete the label "${label.name}"?`
+        : `Delete the label "${label.name}"? It will be removed from ${assignmentCount} task${assignmentCount === 1 ? '' : 's'}.`
+
+    if (!window.confirm(warning)) {
+      return
+    }
+
+    setActionError(null)
+
+    const { error } = await supabase
+      .from('labels')
+      .delete()
+      .eq('id', label.id)
+
+    if (error) {
+      setActionError(
+        `Unable to delete label: ${error.message}`,
+      )
+      return
+    }
+
+    setLabels((currentLabels) =>
+      currentLabels.filter(
+        (currentLabel) => currentLabel.id !== label.id,
+      ),
+    )
+
+    setTaskLabels((currentTaskLabels) =>
+      currentTaskLabels.filter(
+        (taskLabel) => taskLabel.label_id !== label.id,
+      ),
+    )
+
+    if (labelFilter === label.id) {
+      setLabelFilter('all')
+    }
+
+    if (editingLabelId === label.id) {
+      cancelEditingLabel()
+    }
+  }
+
   if (isAuthLoading) {
     return (
       <main className="status-screen">
@@ -675,10 +811,6 @@ function App() {
     )
   }
 
-  /*
-   * Creates a filtered version of the task list without modifying
-   * the original tasks stored in state or Supabase.
-   */
   const normalizedSearch = searchQuery.trim().toLowerCase()
 
   const filteredTasks = tasks.filter((task) => {
@@ -694,18 +826,36 @@ function App() {
       priorityFilter === 'all' ||
       task.priority === priorityFilter
 
-    return matchesSearch && matchesPriority
+    const matchesLabel =
+      labelFilter === 'all' ||
+      taskLabels.some(
+        (taskLabel) =>
+          taskLabel.task_id === task.id &&
+          taskLabel.label_id === labelFilter,
+      )
+
+    return matchesSearch && matchesPriority && matchesLabel
   })
 
   const filtersAreActive =
     normalizedSearch.length > 0 ||
-    priorityFilter !== 'all'
+    priorityFilter !== 'all' ||
+    labelFilter !== 'all'
 
   const clearFilters = () => {
     setSearchQuery('')
     setPriorityFilter('all')
+    setLabelFilter('all')
   }
 
+  const getLabelsForTask = (taskId: string) =>
+    labels.filter((label) =>
+      taskLabels.some(
+        (taskLabel) =>
+          taskLabel.task_id === taskId &&
+          taskLabel.label_id === label.id,
+      ),
+    )
 
   const completedTasks = tasks.filter(
     (task) => task.status === 'done',
@@ -743,100 +893,543 @@ function App() {
           </p>
         </div>
 
+        <div className="header-actions">
+          <div className="label-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setIsManageLabelsModalOpen(true)
+              }}
+            >
+              Manage labels
+            </button>
 
-        <button
-          type="button"
-          className="primary-button"
-          onClick={(event) => {
-            event.stopPropagation()
-            setActionError(null)
-            setIsTaskModalOpen(true)
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={(event) => {
+                event.stopPropagation()
+                setIsLabelModalOpen(true)
+              }}
+            >
+              + New label
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={(event) => {
+              event.stopPropagation()
+              setActionError(null)
+              setIsTaskModalOpen(true)
+            }}
+          >
+            + New task
+          </button>
+        </div>
+      </header>
+
+      {isManageLabelsModalOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => {
+            setIsManageLabelsModalOpen(false)
+            cancelEditingLabel()
           }}
         >
-          + New task
-        </button>
-      </header>
-        {selectedTask && (
-          <div
-            className="modal-backdrop"
-            role="presentation"
-            onMouseDown={() => setSelectedTask(null)}
+          <section
+            className="task-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manage-labels-heading"
+            onMouseDown={(event) => event.stopPropagation()}
           >
-            <section
-              className="task-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="task-detail-heading"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className="modal-header">
-                <div>
-                  <p className="eyebrow">Task details</p>
-                  <h2 id="task-detail-heading">
-                    {selectedTask.title}
-                  </h2>
-                </div>
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Labels</p>
+                <h2 id="manage-labels-heading">
+                  Manage labels
+                </h2>
+              </div>
 
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close label manager"
+                onClick={() => {
+                  setIsManageLabelsModalOpen(false)
+                  cancelEditingLabel()
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="modal-description">
+              Rename, recolor, or remove labels from your workspace.
+            </p>
+
+            {actionError && (
+              <div className="form-error" role="alert">
+                {actionError}
+              </div>
+            )}
+
+            <div className="manage-labels-list">
+              {labels.length === 0 ? (
+                <p>No labels created yet.</p>
+              ) : (
+                labels.map((label) => {
+                  const isEditing = editingLabelId === label.id
+
+                  return (
+                    <div
+                      className={`manage-label-row ${
+                        isEditing ? 'editing' : ''
+                      }`}
+                      key={label.id}
+                    >
+                      {isEditing ? (
+                        <>
+                          <div className="manage-label-edit-fields">
+                            <label className="form-field">
+                              <span>Name</span>
+                              <input
+                                type="text"
+                                value={editingLabelName}
+                                onChange={(event) =>
+                                  setEditingLabelName(
+                                    event.target.value,
+                                  )
+                                }
+                                autoFocus
+                              />
+                            </label>
+
+                            <label className="form-field">
+                              <span>Color</span>
+                              <select
+                                value={editingLabelColor}
+                                onChange={(event) =>
+                                  setEditingLabelColor(
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                {labelColors.map((color) => (
+                                  <option
+                                    key={color}
+                                    value={color}
+                                  >
+                                    {formatColorName(color)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          <div className="manage-label-actions">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={cancelEditingLabel}
+                            >
+                              Cancel
+                            </button>
+
+                            <button
+                              type="button"
+                              className="primary-button"
+                              onClick={() => {
+                                void saveEditingLabel(label)
+                              }}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className={`task-card-label ${
+                              label.color ?? 'gray'
+                            }`}
+                          >
+                            {label.name}
+                          </span>
+
+                          <div className="manage-label-actions">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() =>
+                                startEditingLabel(label)
+                              }
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              className="delete-label-button"
+                              onClick={() => {
+                                void deleteLabel(label)
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {isLabelModalOpen && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setIsLabelModalOpen(false)}
+        >
+          <section
+            className="task-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-label-heading"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Create label</p>
+                <h2 id="new-label-heading">
+                  Add a new label
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close new label form"
+                onClick={() => setIsLabelModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="modal-description">
+              Create a label you can assign to tasks.
+            </p>
+
+            <form
+              className="task-form"
+              onSubmit={async (event) => {
+                event.preventDefault()
+
+                const form = event.currentTarget
+                const formData = new FormData(form)
+
+                const name = String(
+                  formData.get('labelName') ?? '',
+                ).trim()
+
+                const color = String(
+                  formData.get('labelColor') ?? 'purple',
+                )
+
+                if (!name) {
+                  return
+                }
+
+                const {
+                  data: { user },
+                  error: userError,
+                } = await supabase.auth.getUser()
+
+                if (userError || !user) {
+                  setActionError(
+                    userError?.message ??
+                      'Unable to identify the guest user.',
+                  )
+                  return
+                }
+
+                const { data, error } = await supabase
+                  .from('labels')
+                  .insert({
+                    name,
+                    color,
+                    user_id: user.id,
+                  })
+                  .select()
+                  .single()
+
+                if (error) {
+                  setActionError(
+                    `Unable to create label: ${error.message}`,
+                  )
+                  return
+                }
+
+                setLabels((currentLabels) =>
+                  [...currentLabels, data as Label].sort(
+                    (a, b) => a.name.localeCompare(b.name),
+                  ),
+                )
+
+                form.reset()
+                setIsLabelModalOpen(false)
+              }}
+            >
+              <label className="form-field">
+                <span>Label name</span>
+                <input
+                  type="text"
+                  name="labelName"
+                  placeholder="e.g. Bug, Feature, Design"
+                  required
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Color</span>
+                <select
+                  name="labelColor"
+                  defaultValue="purple"
+                >
+                  {labelColors.map((color) => (
+                    <option key={color} value={color}>
+                      {formatColorName(color)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="modal-actions">
                 <button
                   type="button"
-                  className="modal-close"
-                  aria-label="Close task details"
-                  onClick={() => setSelectedTask(null)}
+                  className="secondary-button"
+                  onClick={() => setIsLabelModalOpen(false)}
                 >
-                  ×
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="primary-button"
+                >
+                  Create label
                 </button>
               </div>
+            </form>
+          </section>
+        </div>
+      )}
 
-              {selectedTask.description && (
-                <p className="modal-description">
-                  {selectedTask.description}
-                </p>
-              )}
-
-              <p>
-                Priority: {selectedTask.priority.charAt(0).toUpperCase() + selectedTask.priority.slice(1)}
-              </p>
-              <p>
-                Status: {formatTaskStatus(selectedTask.status)}
-              </p>
-              <div className="task-activity">
-                <h3>Activity</h3>
-
-                {taskActivity.length === 0 ? (
-                  <p>No activity yet.</p>
-                ) : (
-                  taskActivity.map((activity) => (
-                    <div
-                      className="activity-item"
-                      key={activity.id}
-                    >
-                      <strong>
-                        {activity.action === 'created'
-                          ? 'Task created'
-                          : activity.action === 'status_changed'
-                            ? `Moved from ${formatTaskStatus(activity.from_value)} to ${formatTaskStatus(activity.to_value)}`
-                            : 'Task edited'}
-                      </strong>
-
-                      <span>
-                        {new Date(activity.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                  ))
-                )}
+      {selectedTask && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setSelectedTask(null)}
+        >
+          <section
+            className="task-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-detail-heading"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Task details</p>
+                <h2 id="task-detail-heading">
+                  {selectedTask.title}
+                </h2>
               </div>
 
-              {selectedTask.due_date && (
-                <p>Due: {selectedTask.due_date}</p>
-              )}
-            </section>
-          </div>
-        )}
+              <button
+                type="button"
+                className="modal-close"
+                aria-label="Close task details"
+                onClick={() => setSelectedTask(null)}
+              >
+                ×
+              </button>
+            </div>
 
-        <section
-          className="board-summary"
-          aria-label="Board summary"
-        >
+            {selectedTask.description && (
+              <p className="modal-description">
+                {selectedTask.description}
+              </p>
+            )}
+
+            <p>
+              Priority: {formatPriority(selectedTask.priority)}
+            </p>
+
+            <p>
+              Status: {formatTaskStatus(selectedTask.status)}
+            </p>
+
+            <div className="task-labels-section">
+              <h3>Labels</h3>
+
+              {labels.length === 0 ? (
+                <p>No labels available.</p>
+              ) : (
+                <div className="task-label-options">
+                  {labels.map((label) => {
+                    const isAssigned = taskLabels.some(
+                      (taskLabel) =>
+                        taskLabel.task_id === selectedTask.id &&
+                        taskLabel.label_id === label.id,
+                    )
+
+                    return (
+                      <label
+                        className="task-label-option"
+                        key={label.id}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          onChange={async (event) => {
+                            const shouldAssign =
+                              event.target.checked
+
+                            const {
+                              data: { user },
+                              error: userError,
+                            } = await supabase.auth.getUser()
+
+                            if (userError || !user) {
+                              setActionError(
+                                userError?.message ??
+                                  'Unable to identify the guest user.',
+                              )
+                              return
+                            }
+
+                            if (shouldAssign) {
+                              const {
+                                data,
+                                error,
+                              } = await supabase
+                                .from('task_labels')
+                                .insert({
+                                  task_id: selectedTask.id,
+                                  label_id: label.id,
+                                  user_id: user.id,
+                                })
+                                .select()
+                                .single()
+
+                              if (error) {
+                                setActionError(
+                                  `Unable to assign label: ${error.message}`,
+                                )
+                                return
+                              }
+
+                              setTaskLabels(
+                                (currentTaskLabels) => [
+                                  ...currentTaskLabels,
+                                  data as TaskLabel,
+                                ],
+                              )
+                            } else {
+                              const { error } = await supabase
+                                .from('task_labels')
+                                .delete()
+                                .eq(
+                                  'task_id',
+                                  selectedTask.id,
+                                )
+                                .eq('label_id', label.id)
+
+                              if (error) {
+                                setActionError(
+                                  `Unable to remove label: ${error.message}`,
+                                )
+                                return
+                              }
+
+                              setTaskLabels(
+                                (currentTaskLabels) =>
+                                  currentTaskLabels.filter(
+                                    (taskLabel) =>
+                                      !(
+                                        taskLabel.task_id ===
+                                          selectedTask.id &&
+                                        taskLabel.label_id ===
+                                          label.id
+                                      ),
+                                  ),
+                              )
+                            }
+                          }}
+                        />
+
+                        <span>{label.name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="task-activity">
+              <h3>Activity</h3>
+
+              {taskActivity.length === 0 ? (
+                <p>No activity yet.</p>
+              ) : (
+                taskActivity.map((activity) => (
+                  <div
+                    className="activity-item"
+                    key={activity.id}
+                  >
+                    <strong>
+                      {activity.action === 'created'
+                        ? 'Task created'
+                        : activity.action === 'status_changed'
+                          ? `Moved from ${formatTaskStatus(
+                              activity.from_value,
+                            )} to ${formatTaskStatus(
+                              activity.to_value,
+                            )}`
+                          : 'Task edited'}
+                    </strong>
+
+                    <span>
+                      {new Date(
+                        activity.created_at,
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {selectedTask.due_date && (
+              <p>Due: {selectedTask.due_date}</p>
+            )}
+          </section>
+        </div>
+      )}
+
+      <section
+        className="board-summary"
+        aria-label="Board summary"
+      >
         <div className="summary-card">
           <span>Total tasks</span>
           <strong>{tasks.length}</strong>
@@ -861,7 +1454,6 @@ function App() {
       {actionError && (
         <div className="action-error" role="alert">
           <span>{actionError}</span>
-
           <button
             type="button"
             aria-label="Dismiss error"
@@ -924,6 +1516,28 @@ function App() {
           </select>
         </label>
 
+        <label className="filter-field">
+          <span>Label</span>
+
+          <select
+            value={labelFilter}
+            onChange={(event) =>
+              setLabelFilter(event.target.value)
+            }
+          >
+            <option value="all">All labels</option>
+
+            {labels.map((label) => (
+              <option
+                value={label.id}
+                key={label.id}
+              >
+                {label.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
         {filtersAreActive && (
           <button
             type="button"
@@ -947,10 +1561,12 @@ function App() {
             )
 
             return (
-              <section className="board-column" key={column.id}>
+              <section
+                className="board-column"
+                key={column.id}
+              >
                 <div className="column-header">
                   <h2>{column.title}</h2>
-
                   <span className="task-count">
                     {columnTasks.length}
                   </span>
@@ -960,6 +1576,7 @@ function App() {
                   {columnTasks.map((task) => (
                     <DraggableTask
                       task={task}
+                      labels={getLabelsForTask(task.id)}
                       key={task.id}
                       isMenuOpen={openMenuTaskId === task.id}
                       onOpen={async () => {
@@ -970,21 +1587,28 @@ function App() {
                           .from('task_activity')
                           .select('*')
                           .eq('task_id', task.id)
-                          .order('created_at', { ascending: false })
+                          .order('created_at', {
+                            ascending: false,
+                          })
 
                         if (error) {
                           console.error(
                             'Unable to load task activity:',
                             error.message,
                           )
+                          setTaskActivity([])
                           return
                         }
 
-                        setTaskActivity(data ?? [])
+                        setTaskActivity(
+                          (data ?? []) as TaskActivity[],
+                        )
                       }}
                       onToggleMenu={() =>
                         setOpenMenuTaskId((currentId) =>
-                          currentId === task.id ? null : task.id,
+                          currentId === task.id
+                            ? null
+                            : task.id,
                         )
                       }
                       onEdit={() => {
@@ -1067,7 +1691,6 @@ function App() {
             >
               <label className="form-field">
                 <span>Task title</span>
-
                 <input
                   type="text"
                   name="title"
@@ -1078,7 +1701,6 @@ function App() {
 
               <label className="form-field">
                 <span>Description</span>
-
                 <textarea
                   name="description"
                   rows={4}
@@ -1089,7 +1711,6 @@ function App() {
               <div className="form-row">
                 <label className="form-field">
                   <span>Priority</span>
-
                   <select
                     name="priority"
                     defaultValue="normal"
@@ -1102,7 +1723,6 @@ function App() {
 
                 <label className="form-field">
                   <span>Due date</span>
-
                   <input
                     type="date"
                     name="dueDate"
@@ -1179,7 +1799,6 @@ function App() {
             >
               <label className="form-field">
                 <span>Task title</span>
-
                 <input
                   type="text"
                   name="title"
@@ -1190,7 +1809,6 @@ function App() {
 
               <label className="form-field">
                 <span>Description</span>
-
                 <textarea
                   name="description"
                   rows={4}
@@ -1201,7 +1819,6 @@ function App() {
               <div className="form-row">
                 <label className="form-field">
                   <span>Priority</span>
-
                   <select
                     name="priority"
                     defaultValue={editingTask.priority}
@@ -1214,7 +1831,6 @@ function App() {
 
                 <label className="form-field">
                   <span>Due date</span>
-
                   <input
                     type="date"
                     name="dueDate"
@@ -1246,16 +1862,15 @@ function App() {
       )}
 
       <footer className="app-footer">
-  <span>Built by Richard Hanly </span>
-  <a
-    href="https://github.com/richardrhanly-us/next-play-task-board"
-    target="_blank"
-    rel="noreferrer"
-  >
-     View project on GitHib
-  </a>
-</footer>
-
+        <span>Built by Richard Hanly</span>
+        <a
+          href="https://github.com/richardrhanly-us/next-play-task-board"
+          target="_blank"
+          rel="noreferrer"
+        >
+          View project on GitHub
+        </a>
+      </footer>
     </main>
   )
 }

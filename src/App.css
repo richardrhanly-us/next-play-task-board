@@ -745,3 +745,191 @@ select {
   color: #8791a3;
   font-size: 0.78rem;
 }
+
+
+/* =========================================================
+   HEADER ACTIONS
+   ========================================================= */
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-actions .secondary-button {
+  background: #ffffff;
+  border: 1px solid #d8deea;
+  color: #273247;
+  box-shadow: 0 2px 8px rgba(23, 32, 51, 0.05);
+}
+
+.header-actions .secondary-button:hover {
+  background: #f7f8fb;
+}
+
+
+/* =========================================================
+   TASK LABELS
+   ========================================================= */
+
+.task-label-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.task-label-option {
+  cursor: pointer;
+}
+
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.55;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.label-chip.selected {
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(23, 32, 51, 0.08);
+}
+
+.task-label-option:hover .label-chip {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.label-chip.purple {
+  background: #eee8ff;
+  color: #6544d8;
+}
+
+.label-chip.blue {
+  background: #e6f0ff;
+  color: #2f63b8;
+}
+
+.label-chip.green {
+  background: #dcf7e7;
+  color: #087b45;
+}
+
+.label-chip.yellow {
+  background: #fff3cc;
+  color: #946400;
+}
+
+.label-chip.red {
+  background: #ffe3e0;
+  color: #bd2c20;
+}
+
+.label-chip.gray {
+  background: #edf0f5;
+  color: #596579;
+}
+
+/* =========================================================
+   TASK CARD LABELS
+   ========================================================= */
+
+.task-card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.task-card-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.task-card-label.purple {
+  color: #6544d8;
+  background: #eee8ff;
+}
+
+.task-card-label.blue {
+  color: #2f63b8;
+  background: #e6f0ff;
+}
+
+.task-card-label.green {
+  color: #087b45;
+  background: #dcf7e7;
+}
+
+.task-card-label.yellow {
+  color: #946400;
+  background: #fff3cc;
+}
+
+.task-card-label.red {
+  color: #bd2c20;
+  background: #ffe3e0;
+}
+
+.task-card-label.gray {
+  color: #596579;
+  background: #edf0f5;
+}
+
+/* =========================================================
+   MANAGE LABELS
+   ========================================================= */
+
+.manage-labels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.manage-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.manage-label-row:last-child {
+  border-bottom: none;
+}
+
+.manage-label-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.delete-label-button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #b42318;
+  background: #fef3f2;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.delete-label-button:hover {
+  background: #fee4e2;
+}
