@@ -617,3 +617,41 @@ select {
 .app-footer a:hover {
   text-decoration: underline;
 }
+
+
+/* =========================================================
+   DUE DATE
+   ========================================================= */
+
+.due-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.due-date.normal {
+  padding: 0;
+  border-radius: 0;
+  color: #7c8698;
+  background: transparent;
+  font-weight: 600;
+}
+
+.due-date.soon {
+  color: #9a6700;
+  background: #fff4cc;
+}
+
+.due-date.today {
+  color: #a14b00;
+  background: #ffead5;
+}
+
+.due-date.overdue {
+  color: #b42318;
+  background: #fee4e2;
+}
