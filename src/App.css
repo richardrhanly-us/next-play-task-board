@@ -703,3 +703,45 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   ACTIVITY SUMMARY
+   ========================================================= */
+
+.task-activity {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e8f0;
+}
+
+.task-activity h3 {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  color: #172033;
+}
+
+
+
+.activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-item strong {
+  color: #273247;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.activity-item span {
+  color: #8791a3;
+  font-size: 0.78rem;
+}

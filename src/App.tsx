@@ -25,6 +25,30 @@ type DueDateStatus =
   | 'normal'
   | null
 
+type TaskActivityAction =
+  | 'created'
+  | 'status_changed'
+  | 'edited'
+
+
+
+
+
+function formatTaskStatus(status: string | null) {
+  if (!status) {
+    return ''
+  }
+
+  const labels: Record<string, string> = {
+    todo: 'To Do',
+    in_progress: 'In Progress',
+    in_review: 'In Review',
+    done: 'Done',
+  }
+
+  return labels[status] ?? status
+}
+
 function getDueDateStatus(
   dueDate: string | null,
   taskStatus: TaskStatus,
@@ -81,6 +105,7 @@ interface DraggableTaskProps {
   onToggleMenu: () => void
   onEdit: () => void
   onDelete: () => void
+  onOpen: () => void
 }
 
 /*
@@ -93,6 +118,7 @@ function DraggableTask({
   onToggleMenu,
   onEdit,
   onDelete,
+  onOpen,
 }: DraggableTaskProps) {
   const {
     attributes,
@@ -114,13 +140,14 @@ function DraggableTask({
     task.status,
   )
   return (
-    <article
-      ref={setNodeRef}
-      style={style}
-      className={`task-card ${isDragging ? 'dragging' : ''}`}
-      {...listeners}
-      {...attributes}
-    >
+      <article
+        ref={setNodeRef}
+        style={style}
+        className={`task-card ${isDragging ? 'dragging' : ''}`}
+        onClick={onOpen}
+        {...listeners}
+        {...attributes}
+      >
       <div className="task-card-top">
         <span className={`priority-badge ${task.priority}`}>
           {task.priority}
@@ -147,6 +174,12 @@ function DraggableTask({
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => event.stopPropagation()}
             >
+              <button
+                type="button"
+                onClick={onOpen}
+              >
+                View details
+              </button>
               <button
                 type="button"
                 onClick={onEdit}
@@ -217,6 +250,21 @@ function App() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
 
+  const [selectedTask, setSelectedTask] =
+  useState<Task | null>(null)
+
+  const [taskActivity, setTaskActivity] = useState<
+    {
+      id: string
+      task_id: string
+      user_id: string
+      action: TaskActivityAction
+      from_value: string | null
+      to_value: string | null
+      created_at: string
+    }[]
+  >([])
+
   const [openMenuTaskId, setOpenMenuTaskId] = useState<string | null>(
     null,
   )
@@ -236,6 +284,45 @@ function App() {
   const [priorityFilter, setPriorityFilter] =
     useState<TaskPriority | 'all'>('all')
 
+
+
+  const recordTaskActivity = async (
+    taskId: string,
+    action: TaskActivityAction,
+    fromValue: string | null = null,
+    toValue: string | null = null,
+  ) => {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      console.error(
+        'Unable to record task activity:',
+        userError?.message ?? 'Guest user not found',
+      )
+      return
+    }
+
+    const { error } = await supabase
+      .from('task_activity')
+      .insert({
+        task_id: taskId,
+        user_id: user.id,
+        action,
+        from_value: fromValue,
+        to_value: toValue,
+      })
+
+
+    if (error) {
+      console.error(
+        'Unable to record task activity:',
+        error.message,
+      )
+    }
+  }
   /*
    * Runs once when the application first loads.
    * It restores or creates an anonymous Supabase session and then
@@ -358,6 +445,11 @@ function App() {
       return
     }
 
+    await recordTaskActivity(
+      (data as Task).id,
+      'created',
+    )
+
     setTasks((currentTasks) => [
       data as Task,
       ...currentTasks,
@@ -422,6 +514,11 @@ function App() {
       return
     }
 
+   
+    await recordTaskActivity(
+      editingTask.id,
+      'edited',
+    )
     setTasks((currentTasks) =>
       currentTasks.map((task) =>
         task.id === editingTask.id ? (data as Task) : task,
@@ -532,7 +629,16 @@ function App() {
       setActionError(
         `The task could not be moved: ${updateError.message}`,
       )
+
+      return
     }
+
+    await recordTaskActivity(
+      taskId,
+      'status_changed',
+      previousStatus,
+      newStatus,
+    )
   }
 
   if (isAuthLoading) {
@@ -650,10 +756,87 @@ function App() {
           + New task
         </button>
       </header>
-      <section
-        className="board-summary"
-        aria-label="Board summary"
-      >
+        {selectedTask && (
+          <div
+            className="modal-backdrop"
+            role="presentation"
+            onMouseDown={() => setSelectedTask(null)}
+          >
+            <section
+              className="task-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="task-detail-heading"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="modal-header">
+                <div>
+                  <p className="eyebrow">Task details</p>
+                  <h2 id="task-detail-heading">
+                    {selectedTask.title}
+                  </h2>
+                </div>
+
+                <button
+                  type="button"
+                  className="modal-close"
+                  aria-label="Close task details"
+                  onClick={() => setSelectedTask(null)}
+                >
+                  ×
+                </button>
+              </div>
+
+              {selectedTask.description && (
+                <p className="modal-description">
+                  {selectedTask.description}
+                </p>
+              )}
+
+              <p>
+                Priority: {selectedTask.priority.charAt(0).toUpperCase() + selectedTask.priority.slice(1)}
+              </p>
+              <p>
+                Status: {formatTaskStatus(selectedTask.status)}
+              </p>
+              <div className="task-activity">
+                <h3>Activity</h3>
+
+                {taskActivity.length === 0 ? (
+                  <p>No activity yet.</p>
+                ) : (
+                  taskActivity.map((activity) => (
+                    <div
+                      className="activity-item"
+                      key={activity.id}
+                    >
+                      <strong>
+                        {activity.action === 'created'
+                          ? 'Task created'
+                          : activity.action === 'status_changed'
+                            ? `Moved from ${formatTaskStatus(activity.from_value)} to ${formatTaskStatus(activity.to_value)}`
+                            : 'Task edited'}
+                      </strong>
+
+                      <span>
+                        {new Date(activity.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {selectedTask.due_date && (
+                <p>Due: {selectedTask.due_date}</p>
+              )}
+            </section>
+          </div>
+        )}
+
+        <section
+          className="board-summary"
+          aria-label="Board summary"
+        >
         <div className="summary-card">
           <span>Total tasks</span>
           <strong>{tasks.length}</strong>
@@ -779,6 +962,26 @@ function App() {
                       task={task}
                       key={task.id}
                       isMenuOpen={openMenuTaskId === task.id}
+                      onOpen={async () => {
+                        setSelectedTask(task)
+                        setOpenMenuTaskId(null)
+
+                        const { data, error } = await supabase
+                          .from('task_activity')
+                          .select('*')
+                          .eq('task_id', task.id)
+                          .order('created_at', { ascending: false })
+
+                        if (error) {
+                          console.error(
+                            'Unable to load task activity:',
+                            error.message,
+                          )
+                          return
+                        }
+
+                        setTaskActivity(data ?? [])
+                      }}
                       onToggleMenu={() =>
                         setOpenMenuTaskId((currentId) =>
                           currentId === task.id ? null : task.id,
